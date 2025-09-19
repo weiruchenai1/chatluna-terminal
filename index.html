@@ -1,0 +1,1360 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatLuna终端接口</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            color: #00ff00;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 14px;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* 隐藏所有滚动条 */
+        ::-webkit-scrollbar {
+            display: none;
+        }
+
+        * {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        #matrix-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        #terminal {
+            position: relative;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            z-index: 10;
+        }
+
+        .terminal-header {
+            background: rgba(30, 30, 46, 0.9);
+            padding: 10px 20px;
+            border-bottom: 1px solid #00ff00;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .terminal-title {
+            color: #00ff00;
+            font-weight: bold;
+            font-size: 16px;
+            text-shadow: 0 0 10px #00ff00;
+        }
+
+        .terminal-status {
+            color: #888;
+            font-size: 12px;
+        }
+
+        .terminal-body {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: rgba(0, 0, 0, 0.8);
+        }
+
+        .output-line {
+            margin-bottom: 5px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .system-msg {
+            color: #ffd700;
+        }
+
+        .error-msg {
+            color: #ff4444;
+        }
+
+        .success-msg {
+            color: #44ff44;
+        }
+
+        .info-msg {
+            color: #4488ff;
+        }
+
+        .ai-msg {
+            color: #66ffff;
+            padding: 5px;
+            border-left: 2px solid #66ffff;
+            margin: 5px 0;
+        }
+
+        .prompt {
+            color: #00ff00;
+            font-weight: bold;
+        }
+
+        .input-section {
+            background: rgba(30, 30, 46, 0.9);
+            padding: 15px 20px;
+            border-top: 1px solid #00ff00;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .input-prompt {
+            color: #00ff00;
+            font-weight: bold;
+            user-select: none;
+        }
+
+        #command-input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: #00ff00;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 14px;
+            outline: none;
+            padding: 5px 0;
+        }
+
+        #command-input::placeholder {
+            color: #666;
+        }
+
+        .cursor {
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+
+            0%,
+            50% {
+                opacity: 1;
+            }
+
+            51%,
+            100% {
+                opacity: 0;
+            }
+        }
+
+        .help-panel {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            background: rgba(30, 30, 46, 0.95);
+            border: 1px solid #00ff00;
+            border-radius: 8px;
+            padding: 15px;
+            max-width: 300px;
+            max-height: calc(100vh - 200px);
+            overflow: hidden;
+            display: none;
+            z-index: 1000;
+        }
+
+        .help-content {
+            max-height: calc(100vh - 240px);
+            overflow-y: auto;
+        }
+
+        .help-title {
+            color: #00ff00;
+            font-weight: bold;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .help-category {
+            color: #ffd700;
+            font-weight: bold;
+            margin: 10px 0 5px 0;
+            border-bottom: 1px solid #444;
+        }
+
+        .help-command {
+            color: #4488ff;
+            margin: 2px 0;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .help-command:hover {
+            color: #66aaff;
+            background: rgba(68, 136, 255, 0.1);
+        }
+
+        .autocomplete {
+            position: absolute;
+            bottom: 60px;
+            left: 20px;
+            right: 20px;
+            background: rgba(30, 30, 46, 0.95);
+            border: 1px solid #00ff00;
+            border-radius: 4px;
+            max-height: 200px;
+            overflow-y: auto;
+            display: none;
+        }
+
+        .autocomplete-item {
+            padding: 8px 12px;
+            color: #00ff00;
+            cursor: pointer;
+            border-bottom: 1px solid #333;
+        }
+
+        .autocomplete-item:hover,
+        .autocomplete-item.selected {
+            background: rgba(0, 255, 0, 0.1);
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="matrix-canvas"></canvas>
+
+    <div id="terminal">
+        <div class="terminal-header">
+            <div class="terminal-title">ChatLuna Terminal Interface v2.0</div>
+            <div class="terminal-status" id="status">Status: ONLINE | Model: gemini-2.5-flash | Room: 默认房间 | Preset:
+                chatgpt</div>
+        </div>
+
+        <div class="terminal-body" id="output"></div>
+
+        <div class="input-section">
+            <span class="input-prompt">chatluna@terminal:~$</span>
+            <input type="text" id="command-input" placeholder="输入命令... (Tab自动补全, F1显示帮助)" autocomplete="off">
+            <span class="cursor" id="cursor">█</span>
+        </div>
+    </div>
+
+    <div class="help-panel" id="help-panel">
+        <div class="help-content">
+            <div class="help-title">ChatLuna 命令参考</div>
+            <div class="help-category">对话命令</div>
+            <div class="help-command" onclick="insertCommand('chatluna.chat.text')">chatluna.chat.text - 文本对话</div>
+            <div class="help-command" onclick="insertCommand('chatluna.chat.voice')">chatluna.chat.voice - 语音对话</div>
+            <div class="help-command" onclick="insertCommand('chatluna.chat.stop')">chatluna.chat.stop - 停止对话</div>
+            <div class="help-command" onclick="insertCommand('chatluna.chat.rollback')">chatluna.chat.rollback - 回滚对话
+            </div>
+
+            <div class="help-category">房间管理</div>
+            <div class="help-command" onclick="insertCommand('chatluna.room.create')">chatluna.room.create - 创建房间</div>
+            <div class="help-command" onclick="insertCommand('chatluna.room.switch')">chatluna.room.switch - 切换房间</div>
+            <div class="help-command" onclick="insertCommand('chatluna.room.set')">chatluna.room.set - 设置房间</div>
+            <div class="help-command" onclick="insertCommand('chatluna.room.delete')">chatluna.room.delete - 删除房间</div>
+            <div class="help-command" onclick="insertCommand('chatluna.room.list')">chatluna.room.list - 房间列表</div>
+            <div class="help-command" onclick="insertCommand('chatluna.room.info')">chatluna.room.info - 房间信息</div>
+            <div class="help-command" onclick="insertCommand('chatluna.room.clear')">chatluna.room.clear - 清空记录</div>
+
+            <div class="help-category">模型管理</div>
+            <div class="help-command" onclick="insertCommand('chatluna.model.list')">chatluna.model.list - 模型列表</div>
+            <div class="help-command" onclick="insertCommand('chatluna.model.search')">chatluna.model.search - 搜索模型
+            </div>
+
+            <div class="help-category">预设管理</div>
+            <div class="help-command" onclick="insertCommand('chatluna.preset.list')">chatluna.preset.list - 预设列表</div>
+            <div class="help-command" onclick="insertCommand('chatluna.preset.add')">chatluna.preset.add - 添加预设</div>
+            <div class="help-command" onclick="insertCommand('chatluna.preset.set')">chatluna.preset.set - 设置预设</div>
+            <div class="help-command" onclick="insertCommand('chatluna.preset.delete')">chatluna.preset.delete - 删除预设
+            </div>
+
+            <div class="help-category">系统命令</div>
+            <div class="help-command" onclick="insertCommand('chatluna.restart')">chatluna.restart - 重启插件</div>
+            <div class="help-command" onclick="insertCommand('chatluna.wipe')">chatluna.wipe - 重置数据</div>
+            <div class="help-command" onclick="insertCommand('clear')">clear - 清屏</div>
+            <div class="help-command" onclick="insertCommand('help')">help - 显示帮助</div>
+        </div>
+    </div>
+
+    <div class="autocomplete" id="autocomplete"></div>
+
+    <script>
+        // Matrix Rain Effect
+        const canvas = document.getElementById('matrix-canvas');
+        const ctx = canvas.getContext('2d');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const matrix = "ABCDEFGHIJKLMNOPQRSTUVWXYZ123456789@#$%^&*()*&^%+-/~{[|`]}";
+        const matrixArray = matrix.split("");
+
+        const fontSize = 10;
+        const columns = canvas.width / fontSize;
+
+        const drops = [];
+        for (let x = 0; x < columns; x++) {
+            drops[x] = 1;
+        }
+
+        function draw() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.04)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = '#00ff00';
+            ctx.font = fontSize + 'px monospace';
+
+            for (let i = 0; i < drops.length; i++) {
+                const text = matrixArray[Math.floor(Math.random() * matrixArray.length)];
+                ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+
+                if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
+                    drops[i] = 0;
+                }
+                drops[i]++;
+            }
+        }
+
+        setInterval(draw, 35);
+
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+
+        // API配置
+        const API_BASE = 'https://api.kongbai.me/v1';
+        const API_KEY = 'sk-WjIgedsrkifCImIIemzlRuRx9mqfr6U6eGgIjFyKV5wjgHT4';
+        const MODEL_NAME = 'gemini-2.5-flash';
+
+        // 全局状态
+        let isWaitingForVerification = false;
+        let isWaitingForConfirmation = false;
+        let isWaitingForPresetContent = false;
+        let confirmationAction = null;
+        let confirmationData = null;
+        let verificationAnswer = 0;
+        let currentRoomId = '001';
+        let currentStreamController = null;
+        let pendingPresetName = null;
+
+        // 预设系统
+        let presets = {
+            'chatgpt': 'You are ChatGPT, a helpful AI assistant.',
+            'catgirl': '你是一只可爱的猫娘，说话时会在句尾加上"喵~"，性格活泼可爱。',
+            'assistant': '你是一个专业的商务助手，回答简洁、准确、正式。',
+            'translator': '你是一个专业的翻译助手，能够准确翻译各种语言。',
+            'programmer': '你是一个编程专家，精通各种编程语言，善于解决技术问题。',
+            'teacher': '你是一个耐心的老师，善于用简单易懂的方式解释复杂的概念。',
+            'creative': '你是一个富有创意的写作助手，擅长创作故事、诗歌和各种文学作品。'
+        };
+
+        // 房间系统
+        let rooms = {
+            '001': {
+                name: '默认房间',
+                model: 'gemini-2.5-flash',
+                preset: 'chatgpt',
+                history: [],
+                created: new Date().toISOString()
+            },
+            '002': {
+                name: '工作房间',
+                model: 'gemini-2.5-flash',
+                preset: 'assistant',
+                history: [],
+                created: new Date().toISOString()
+            },
+            '003': {
+                name: '娱乐房间',
+                model: 'gemini-2.5-flash',
+                preset: 'catgirl',
+                history: [],
+                created: new Date().toISOString()
+            }
+        };
+
+        // 可用模型列表
+        const availableModels = [
+            { name: 'gemini-2.5-flash', provider: 'Google', status: '在线', description: '快速响应模型' },
+            { name: 'gemini-1.5-pro', provider: 'Google', status: '离线', description: '高级推理模型' },
+            { name: 'gpt-4-turbo', provider: 'OpenAI', status: '离线', description: '最新GPT-4模型' },
+            { name: 'gpt-3.5-turbo', provider: 'OpenAI', status: '离线', description: '快速响应模型' },
+            { name: 'claude-3-sonnet', provider: 'Anthropic', status: '离线', description: '平衡性能模型' },
+            { name: 'ChatGLM-Pro', provider: '智谱AI', status: '离线', description: '中文优化模型' }
+        ];
+
+        const commands = [
+            'chatluna',
+            'chatluna.chat',
+            'chatluna.chat.text',
+            'chatluna.chat.voice',
+            'chatluna.chat.stop',
+            'chatluna.chat.rollback',
+            'chatluna.room',
+            'chatluna.room.create',
+            'chatluna.room.switch',
+            'chatluna.room.set',
+            'chatluna.room.delete',
+            'chatluna.room.list',
+            'chatluna.room.info',
+            'chatluna.room.clear',
+            'chatluna.room.auto-update',
+            'chatluna.room.transfer',
+            'chatluna.room.invite',
+            'chatluna.room.leave',
+            'chatluna.room.kick',
+            'chatluna.room.permission',
+            'chatluna.room.mute',
+            'chatluna.room.join',
+            'chatluna.model',
+            'chatluna.model.list',
+            'chatluna.model.search',
+            'chatluna.preset',
+            'chatluna.preset.list',
+            'chatluna.preset.add',
+            'chatluna.preset.set',
+            'chatluna.preset.delete',
+            'chatluna.preset.clone',
+            'chatluna.embeddings',
+            'chatluna.embeddings.list',
+            'chatluna.embeddings.set',
+            'chatluna.vectorstore',
+            'chatluna.vectorstore.list',
+            'chatluna.vectorstore.set',
+            'chatluna.restart',
+            'chatluna.wipe',
+            'chatluna.balance.query',
+            'chatluna.balance.clear',
+            'chatluna.balance.set',
+            'chatluna.auth.add',
+            'chatluna.auth.kick',
+            'chatluna.auth.create',
+            'chatluna.auth.list',
+            'clear',
+            'help',
+            'exit',
+            'chat',
+            'preset'
+        ];
+
+        const output = document.getElementById('output');
+        const input = document.getElementById('command-input');
+        const helpPanel = document.getElementById('help-panel');
+        const autocomplete = document.getElementById('autocomplete');
+        const statusElement = document.getElementById('status');
+
+        let commandHistory = [];
+        let historyIndex = -1;
+        let selectedAutocomplete = -1;
+
+        // 更新状态栏
+        function updateStatus() {
+            const currentRoom = rooms[currentRoomId];
+            statusElement.textContent = `Status: ONLINE | Model: ${currentRoom.model} | Room: ${currentRoom.name} | Preset: ${currentRoom.preset}`;
+        }
+
+        // 流式API调用
+        async function callAIStream(message, onChunk, onComplete, onError) {
+            let currentAiLine = null;
+            let fullResponse = '';
+
+            try {
+                const messages = [];
+                const currentRoom = rooms[currentRoomId];
+
+                if (presets[currentRoom.preset]) {
+                    messages.push({ role: 'system', content: presets[currentRoom.preset] });
+                }
+
+                messages.push(...currentRoom.history);
+                messages.push({ role: 'user', content: message });
+
+                const controller = new AbortController();
+                currentStreamController = controller;
+
+                const response = await fetch(`${API_BASE}/chat/completions`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${API_KEY}`
+                    },
+                    body: JSON.stringify({
+                        model: currentRoom.model,
+                        messages: messages,
+                        temperature: 0.7,
+                        max_tokens: 1000,
+                        stream: true
+                    }),
+                    signal: controller.signal
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API错误: ${response.status} - ${response.statusText}`);
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+
+                currentAiLine = document.createElement('div');
+                currentAiLine.className = 'output-line ai-msg';
+                currentAiLine.textContent = 'AI回复: ';
+                output.appendChild(currentAiLine);
+
+                while (true) {
+                    const { done, value } = await reader.read();
+
+                    if (done) break;
+
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+
+                    for (const line of lines) {
+                        if (line.trim() === '' || line.trim() === 'data: [DONE]') continue;
+
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+                                const content = data.choices?.[0]?.delta?.content || '';
+
+                                if (content) {
+                                    fullResponse += content;
+                                    currentAiLine.textContent = 'AI回复: ' + fullResponse;
+                                    output.scrollTop = output.scrollHeight;
+                                    onChunk?.(content);
+                                }
+                            } catch (e) {
+                                console.warn('解析流数据失败:', e);
+                            }
+                        }
+                    }
+                }
+
+                currentRoom.history.push(
+                    { role: 'user', content: message },
+                    { role: 'assistant', content: fullResponse }
+                );
+
+                if (currentRoom.history.length > 20) {
+                    currentRoom.history = currentRoom.history.slice(-20);
+                }
+
+                onComplete?.(fullResponse);
+
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    if (currentAiLine) {
+                        currentAiLine.textContent += ' [已中止]';
+                    }
+                    addOutput('error-msg', '对话已中止');
+                } else {
+                    console.error('API调用错误:', error);
+                    if (currentAiLine) {
+                        currentAiLine.remove();
+                    }
+
+                    let errorMsg = '网络连接失败，请检查网络状态';
+                    if (error.message.includes('timeout')) {
+                        errorMsg = '请求超时，请稍后重试';
+                    } else if (error.message.includes('401')) {
+                        errorMsg = 'API密钥无效或已过期';
+                    } else if (error.message.includes('429')) {
+                        errorMsg = '请求频率过高，请稍后重试';
+                    } else if (error.message.includes('500')) {
+                        errorMsg = '服务器内部错误，请稍后重试';
+                    }
+
+                    addOutput('error-msg', `API调用失败: ${errorMsg}`);
+                    onError?.(error);
+                }
+            } finally {
+                currentStreamController = null;
+            }
+        }
+
+        // 房间管理函数
+        function switchRoom(roomId) {
+            if (!rooms[roomId]) {
+                addOutput('error-msg', `房间 ${roomId} 不存在`);
+                return false;
+            }
+
+            currentRoomId = roomId;
+            updateStatus();
+            return true;
+        }
+
+        function createRoom(name, model = 'gemini-2.5-flash', preset = 'chatgpt') {
+            const roomId = Date.now().toString();
+            rooms[roomId] = {
+                name: name,
+                model: model,
+                preset: preset,
+                history: [],
+                created: new Date().toISOString()
+            };
+            return roomId;
+        }
+
+        // 初始化
+        function init() {
+            addOutput('system-msg', '='.repeat(60));
+            addOutput('system-msg', '       ChatLuna Terminal Interface v2.0');
+            addOutput('system-msg', '       欢迎使用 ChatLuna 命令终端');
+            addOutput('system-msg', '='.repeat(60));
+            addOutput('info-msg', '提示：');
+            addOutput('info-msg', '• 输入 "help" 查看所有可用命令');
+            addOutput('info-msg', '• 按 Tab 键自动补全命令');
+            addOutput('info-msg', '• 按 F1 显示/隐藏帮助面板');
+            addOutput('info-msg', '• 按 ↑↓ 键浏览命令历史');
+            addOutput('info-msg', '• 输入 "clear" 清屏');
+            addOutput('info-msg', '• 支持流式对话，实时显示AI回复');
+            addOutput('info-msg', '');
+            addOutput('success-msg', '系统已就绪，等待输入命令...');
+            addOutput('', '');
+            updateStatus();
+        }
+
+        function addOutput(className, text) {
+            const line = document.createElement('div');
+            line.className = `output-line ${className}`;
+            line.textContent = text;
+            output.appendChild(line);
+            output.scrollTop = output.scrollHeight;
+        }
+
+        // 执行确认操作
+        function executeConfirmAction(confirmed) {
+            if (confirmed) {
+                switch (confirmationAction) {
+                    case 'delete_room':
+                        const { roomId } = confirmationData;
+                        delete rooms[roomId];
+                        if (roomId === currentRoomId) {
+                            currentRoomId = Object.keys(rooms)[0];
+                            updateStatus();
+                            addOutput('info-msg', `已自动切换到房间: ${rooms[currentRoomId].name}`);
+                        }
+                        addOutput('success-msg', '房间删除成功');
+                        break;
+
+                    case 'delete_preset':
+                        const { presetName } = confirmationData;
+                        delete presets[presetName];
+                        if (rooms[currentRoomId].preset === presetName) {
+                            rooms[currentRoomId].preset = 'chatgpt';
+                            rooms[currentRoomId].history = [];
+                            updateStatus();
+                            addOutput('info-msg', '已自动切换到默认预设: chatgpt');
+                        }
+                        addOutput('success-msg', `预设 "${presetName}" 已删除`);
+                        break;
+                }
+            } else {
+                addOutput('info-msg', '操作已取消');
+            }
+
+            isWaitingForConfirmation = false;
+            confirmationAction = null;
+            confirmationData = null;
+        }
+
+        function processCommand(cmd) {
+            const trimmed = cmd.trim();
+            if (!trimmed) return;
+
+            // 如果正在等待预设内容输入
+            if (isWaitingForPresetContent) {
+                addOutput('prompt', `chatluna@terminal:~$ ${trimmed}`);
+                
+                if (trimmed.toLowerCase() === '/cancel') {
+                    addOutput('info-msg', '预设创建已取消');
+                    isWaitingForPresetContent = false;
+                    pendingPresetName = null;
+                } else if (trimmed.toLowerCase() === '/end') {
+                    addOutput('error-msg', '错误: 预设内容不能为空');
+                    addOutput('info-msg', '请输入预设内容，或输入 /cancel 取消创建');
+                } else {
+                    // 保存预设
+                    presets[pendingPresetName] = trimmed;
+                    addOutput('success-msg', `预设 "${pendingPresetName}" 创建成功`);
+                    addOutput('info-msg', `预设内容: ${trimmed.substring(0, 50)}${trimmed.length > 50 ? '...' : ''}`);
+                    addOutput('info-msg', `使用 preset ${pendingPresetName} 或 chatluna.preset.set ${pendingPresetName} 来切换到此预设`);
+                    
+                    isWaitingForPresetContent = false;
+                    pendingPresetName = null;
+                }
+                addOutput('', '');
+                return;
+            }
+
+            // 如果正在等待数学验证
+            if (isWaitingForVerification) {
+                const userAnswer = parseInt(trimmed);
+                addOutput('prompt', `chatluna@terminal:~$ ${trimmed}`);
+
+                if (userAnswer === verificationAnswer) {
+                    addOutput('success-msg', '验证通过，开始数据清理...');
+                    addOutput('info-msg', '正在清除数据库...');
+
+                    Object.keys(rooms).forEach(roomId => {
+                        rooms[roomId].history = [];
+                    });
+
+                    setTimeout(() => {
+                        addOutput('success-msg', '系统重置完成！');
+                        addOutput('info-msg', 'ChatLuna已恢复到初始状态');
+                    }, 1500);
+                } else {
+                    addOutput('error-msg', '验证失败，操作已取消');
+                    addOutput('info-msg', '数学答案不正确，系统保持原状');
+                }
+
+                isWaitingForVerification = false;
+                verificationAnswer = 0;
+                addOutput('', '');
+                return;
+            }
+
+            // 如果正在等待Y/N确认
+            if (isWaitingForConfirmation) {
+                addOutput('prompt', `chatluna@terminal:~$ ${trimmed}`);
+                const answer = trimmed.toLowerCase();
+
+                if (answer === 'y' || answer === 'yes') {
+                    executeConfirmAction(true);
+                } else if (answer === 'n' || answer === 'no') {
+                    executeConfirmAction(false);
+                } else {
+                    addOutput('error-msg', '请输入 Y/N 或 yes/no');
+                    return;
+                }
+
+                addOutput('', '');
+                return;
+            }
+
+            // 添加到历史
+            commandHistory.unshift(trimmed);
+            if (commandHistory.length > 50) {
+                commandHistory.pop();
+            }
+            historyIndex = -1;
+
+            // 显示用户输入
+            addOutput('prompt', `chatluna@terminal:~$ ${trimmed}`);
+
+            // 处理命令
+            const args = trimmed.split(' ');
+            const mainCmd = args[0];
+
+            switch (mainCmd) {
+                case 'clear':
+                    output.innerHTML = '';
+                    break;
+
+                case 'help':
+                    showHelp();
+                    break;
+
+                case 'exit':
+                    addOutput('system-msg', '感谢使用 ChatLuna Terminal！');
+                    setTimeout(() => {
+                        window.close();
+                    }, 1000);
+                    break;
+
+                case 'chat':
+                    const directMessage = args.slice(1).join(' ');
+                    if (directMessage) {
+                        addOutput('success-msg', `发送消息: "${directMessage}"`);
+                        addOutput('info-msg', '正在连接AI模型...');
+                        callAIStream(directMessage);
+                    } else {
+                        addOutput('error-msg', '请输入消息内容');
+                        addOutput('info-msg', '用法: chat <你的消息>');
+                    }
+                    break;
+
+                case 'preset':
+                    const presetArg = args[1];
+                    const currentRoom = rooms[currentRoomId];
+                    if (!presetArg) {
+                        addOutput('info-msg', '当前预设: ' + currentRoom.preset);
+                        addOutput('info-msg', '可用预设: ' + Object.keys(presets).join(', '));
+                        addOutput('info-msg', '用法: preset <预设名> 来切换');
+                    } else if (presets[presetArg]) {
+                        currentRoom.preset = presetArg;
+                        currentRoom.history = [];
+                        updateStatus();
+                        addOutput('success-msg', `已切换到预设: ${presetArg}`);
+                        addOutput('info-msg', '聊天历史已重置');
+                    } else {
+                        addOutput('error-msg', `预设 "${presetArg}" 不存在`);
+                        addOutput('info-msg', '可用预设: ' + Object.keys(presets).join(', '));
+                    }
+                    break;
+
+                default:
+                    if (mainCmd.startsWith('chatluna')) {
+                        simulateChatluna(trimmed);
+                    } else {
+                        addOutput('error-msg', `错误: 未知命令 '${mainCmd}'`);
+                        addOutput('info-msg', '输入 "help" 查看可用命令');
+                    }
+            }
+
+            addOutput('', '');
+        }
+
+        function showHelp() {
+            addOutput('system-msg', 'ChatLuna 命令帮助');
+            addOutput('system-msg', '='.repeat(40));
+            addOutput('info-msg', '对话命令:');
+            addOutput('', '  chatluna.chat.text [message]     - 发送文本消息');
+            addOutput('', '  chat [message]                   - 简化聊天命令');
+            addOutput('', '  chatluna.chat.stop               - 停止当前对话');
+            addOutput('', '  chatluna.chat.rollback           - 回滚上一条消息');
+            addOutput('', '');
+            addOutput('info-msg', '房间管理:');
+            addOutput('', '  chatluna.room.create             - 创建新房间');
+            addOutput('', '  chatluna.room.switch <room>      - 切换房间');
+            addOutput('', '  chatluna.room.set                - 设置房间属性');
+            addOutput('', '  chatluna.room.list               - 列出房间');
+            addOutput('', '  chatluna.room.clear              - 清空聊天记录');
+            addOutput('', '');
+            addOutput('info-msg', '模型和预设:');
+            addOutput('', '  chatluna.model.list              - 列出可用模型');
+            addOutput('', '  chatluna.model.search <keyword>  - 搜索模型');
+            addOutput('', '  chatluna.preset.list             - 列出预设');
+            addOutput('', '  preset <name>                    - 切换预设');
+            addOutput('', '');
+            addOutput('info-msg', '系统命令:');
+            addOutput('', '  chatluna.restart                 - 重启插件');
+            addOutput('', '  chatluna.wipe                    - 重置所有数据');
+            addOutput('', '  clear                            - 清屏');
+            addOutput('', '  help                             - 显示此帮助');
+            addOutput('', '  exit                             - 退出终端');
+        }
+
+        async function simulateChatluna(cmd) {
+            const args = cmd.split(' ');
+            const currentRoom = rooms[currentRoomId];
+
+            if (cmd === 'chatluna') {
+                addOutput('system-msg', 'ChatLuna v3.0.8 - AI 对话管理系统');
+                addOutput('info-msg', '版本信息: 核心模块已加载');
+                addOutput('success-msg', `当前状态: 在线 | 可用模型: ${currentRoom.model} | 活跃房间: ${Object.keys(rooms).length}`);
+                addOutput('', '');
+                addOutput('info-msg', '常用命令:');
+                addOutput('', '  chatluna.chat.text <消息>  - 开始对话');
+                addOutput('', '  chatluna.room.list        - 查看房间');
+                addOutput('', '  chatluna.model.list       - 查看模型');
+                return;
+            }
+
+            if (cmd.startsWith('chatluna.chat.text')) {
+                const message = args.slice(1).join(' ');
+                if (!message) {
+                    addOutput('error-msg', '错误: 请输入要发送的消息');
+                    addOutput('info-msg', '用法: chatluna.chat.text <你的消息>');
+                    return;
+                }
+
+                addOutput('success-msg', `发送消息: "${message}"`);
+                addOutput('info-msg', '正在连接AI模型...');
+                addOutput('system-msg', `使用模型: ${currentRoom.model} | 房间: ${currentRoom.name}`);
+
+                await callAIStream(message);
+                return;
+            }
+
+            if (cmd === 'chatluna.chat.stop') {
+                if (currentStreamController) {
+                    currentStreamController.abort();
+                    addOutput('success-msg', '已停止当前对话');
+                } else {
+                    addOutput('info-msg', '当前没有进行中的对话');
+                }
+                return;
+            }
+
+            if (cmd === 'chatluna.chat.rollback') {
+                if (currentRoom.history.length >= 2) {
+                    currentRoom.history = currentRoom.history.slice(0, -2);
+                    addOutput('success-msg', '对话已回滚');
+                    addOutput('info-msg', '已删除最后一轮对话');
+                } else {
+                    addOutput('error-msg', '没有可回滚的对话记录');
+                }
+                return;
+            }
+
+            if (cmd === 'chatluna.room.clear') {
+                currentRoom.history = [];
+                addOutput('success-msg', '已清除当前房间的聊天记录');
+                addOutput('info-msg', '对话历史已重置');
+                return;
+            }
+
+            if (cmd.startsWith('chatluna.room.create')) {
+                const roomName = args.slice(1).join(' ') || `新房间${Date.now()}`;
+                addOutput('success-msg', '创建房间向导启动...');
+                addOutput('info-msg', `房间名称: ${roomName}`);
+
+                setTimeout(() => {
+                    const newRoomId = createRoom(roomName);
+                    addOutput('system-msg', `房间ID: ${newRoomId}`);
+                    addOutput('system-msg', `模型: ${MODEL_NAME}`);
+                    addOutput('system-msg', `预设: chatgpt`);
+                    addOutput('success-msg', '房间创建成功！');
+                    addOutput('info-msg', `使用 chatluna.room.switch ${newRoomId} 切换到新房间`);
+                }, 1000);
+                return;
+            }
+
+            if (cmd.startsWith('chatluna.room.switch')) {
+                const targetRoomId = args.slice(1).join(' ');
+                if (!targetRoomId) {
+                    addOutput('error-msg', '错误: 请指定要切换的房间ID或名称');
+                    addOutput('info-msg', '用法: chatluna.room.switch <房间ID/名称>');
+                    return;
+                }
+
+                let foundRoomId = null;
+                if (rooms[targetRoomId]) {
+                    foundRoomId = targetRoomId;
+                } else {
+                    for (const [id, room] of Object.entries(rooms)) {
+                        if (room.name === targetRoomId) {
+                            foundRoomId = id;
+                            break;
+                        }
+                    }
+                }
+
+                if (foundRoomId) {
+                    addOutput('system-msg', `正在切换到房间: ${rooms[foundRoomId].name}`);
+                    setTimeout(() => {
+                        switchRoom(foundRoomId);
+                        addOutput('success-msg', `已切换到房间: ${rooms[foundRoomId].name}`);
+                        addOutput('info-msg', `模型: ${rooms[foundRoomId].model} | 预设: ${rooms[foundRoomId].preset}`);
+                    }, 500);
+                } else {
+                    addOutput('error-msg', `房间 "${targetRoomId}" 不存在`);
+                    addOutput('info-msg', '使用 chatluna.room.list 查看可用房间');
+                }
+                return;
+            }
+
+            if (cmd.startsWith('chatluna.room.set')) {
+                if (args.length < 2) {
+                    addOutput('error-msg', '错误: 请指定要设置的属性');
+                    addOutput('info-msg', '用法: chatluna.room.set -m <模型> 或 -p <预设> 或 -n <名称>');
+                    return;
+                }
+
+                for (let i = 1; i < args.length; i++) {
+                    if (args[i] === '-m' && args[i + 1]) {
+                        const newModel = args[i + 1];
+                        const modelExists = availableModels.some(m => m.name === newModel);
+                        if (modelExists) {
+                            currentRoom.model = newModel;
+                            addOutput('success-msg', `房间模型已更新为: ${newModel}`);
+                        } else {
+                            addOutput('error-msg', `模型 "${newModel}" 不存在`);
+                        }
+                        i++;
+                    } else if (args[i] === '-p' && args[i + 1]) {
+                        const newPreset = args[i + 1];
+                        if (presets[newPreset]) {
+                            currentRoom.preset = newPreset;
+                            currentRoom.history = [];
+                            addOutput('success-msg', `房间预设已更新为: ${newPreset}`);
+                            addOutput('info-msg', '聊天历史已重置');
+                        } else {
+                            addOutput('error-msg', `预设 "${newPreset}" 不存在`);
+                        }
+                        i++;
+                    } else if (args[i] === '-n' && args[i + 1]) {
+                        const newName = args.slice(i + 1).join(' ');
+                        currentRoom.name = newName;
+                        addOutput('success-msg', `房间名称已更新为: ${newName}`);
+                        break;
+                    }
+                }
+                updateStatus();
+                return;
+            }
+
+            if (cmd === 'chatluna.room.list') {
+                addOutput('success-msg', '当前房间列表');
+                addOutput('system-msg', '='.repeat(80));
+                Object.entries(rooms).forEach(([id, room]) => {
+                    const current = id === currentRoomId ? ' [当前]' : '';
+                    const historyCount = Math.floor(room.history.length / 2);
+                    addOutput('', `ID: ${id.padEnd(6)} | ${room.name.padEnd(12)} | ${room.model.padEnd(18)} | ${room.preset.padEnd(10)} | 对话:${historyCount}${current}`);
+                });
+                addOutput('system-msg', '='.repeat(80));
+                addOutput('info-msg', '使用 chatluna.room.switch <ID/名称> 切换房间');
+                return;
+            }
+
+            if (cmd === 'chatluna.room.info') {
+                addOutput('success-msg', '房间详细信息');
+                addOutput('system-msg', '='.repeat(50));
+                addOutput('', `房间名称: ${currentRoom.name}`);
+                addOutput('', `房间ID: ${currentRoomId}`);
+                addOutput('', `使用模型: ${currentRoom.model}`);
+                addOutput('', `当前预设: ${currentRoom.preset}`);
+                addOutput('', `创建时间: ${new Date(currentRoom.created).toLocaleString()}`);
+                addOutput('', `对话轮数: ${Math.floor(currentRoom.history.length / 2)}`);
+                addOutput('system-msg', '='.repeat(50));
+                return;
+            }
+
+            if (cmd.startsWith('chatluna.room.delete')) {
+                const deleteRoomId = args[1] || currentRoomId;
+                if (!rooms[deleteRoomId]) {
+                    addOutput('error-msg', `房间 ${deleteRoomId} 不存在`);
+                    return;
+                }
+
+                if (Object.keys(rooms).length <= 1) {
+                    addOutput('error-msg', '无法删除最后一个房间');
+                    return;
+                }
+
+                addOutput('error-msg', `确认删除房间 "${rooms[deleteRoomId].name}" 吗？`);
+                addOutput('info-msg', '此操作将删除房间的所有聊天记录 (Y/N):');
+
+                confirmationAction = 'delete_room';
+                confirmationData = { roomId: deleteRoomId };
+                isWaitingForConfirmation = true;
+                return;
+            }
+
+            if (cmd === 'chatluna.model.list') {
+                addOutput('success-msg', '可用AI模型列表');
+                addOutput('system-msg', '='.repeat(80));
+                availableModels.forEach(model => {
+                    const current = model.name === currentRoom.model ? ' [当前使用]' : '';
+                    const status = model.status === '在线' ? '🟢' : '🔴';
+                    addOutput('', `${status} ${model.name.padEnd(20)} | ${model.provider.padEnd(12)} | ${model.description}${current}`);
+                });
+                addOutput('system-msg', '='.repeat(80));
+                addOutput('info-msg', '使用 chatluna.room.set -m <模型名> 切换模型');
+                return;
+            }
+
+            if (cmd.startsWith('chatluna.model.search')) {
+                const keyword = args[1];
+                if (!keyword) {
+                    addOutput('error-msg', '错误: 请提供搜索关键词');
+                    addOutput('info-msg', '用法: chatluna.model.search <关键词>');
+                    return;
+                }
+
+                const searchResults = availableModels.filter(model =>
+                    model.name.toLowerCase().includes(keyword.toLowerCase()) ||
+                    model.provider.toLowerCase().includes(keyword.toLowerCase()) ||
+                    model.description.toLowerCase().includes(keyword.toLowerCase())
+                );
+
+                if (searchResults.length > 0) {
+                    addOutput('success-msg', `搜索 "${keyword}" 的结果 (${searchResults.length}个):`);
+                    addOutput('system-msg', '='.repeat(60));
+                    searchResults.forEach(model => {
+                        const status = model.status === '在线' ? '🟢' : '🔴';
+                        addOutput('', `${status} ${model.name} | ${model.provider} | ${model.description}`);
+                    });
+                    addOutput('system-msg', '='.repeat(60));
+                } else {
+                    addOutput('error-msg', `未找到包含 "${keyword}" 的模型`);
+                    addOutput('info-msg', '使用 chatluna.model.list 查看所有可用模型');
+                }
+                return;
+            }
+
+            if (cmd === 'chatluna.preset.list') {
+                addOutput('success-msg', '预设模板列表');
+                addOutput('system-msg', '='.repeat(60));
+                Object.entries(presets).forEach(([name, description]) => {
+                    const current = name === currentRoom.preset ? ' [当前]' : '';
+                    const shortDesc = description.substring(0, 40) + (description.length > 40 ? '...' : '');
+                    addOutput('', `${name.padEnd(12)} | ${shortDesc}${current}`);
+                });
+                addOutput('system-msg', '='.repeat(60));
+                addOutput('info-msg', '使用 preset <名称> 或 chatluna.preset.set <名称> 切换预设');
+                return;
+            }
+
+            if (cmd.startsWith('chatluna.preset.add')) {
+                const newPresetName = args[1];
+                if (!newPresetName) {
+                    addOutput('error-msg', '错误: 请指定预设名称');
+                    addOutput('info-msg', '用法: chatluna.preset.add <预设名>');
+                    return;
+                }
+
+                if (presets[newPresetName]) {
+                    addOutput('error-msg', `预设 "${newPresetName}" 已存在，请使用其他名称`);
+                    addOutput('info-msg', '可用预设: ' + Object.keys(presets).join(', '));
+                    return;
+                }
+
+                addOutput('success-msg', `创建预设: ${newPresetName}`);
+                addOutput('info-msg', '请输入预设内容:');
+                addOutput('system-msg', '提示:');
+                addOutput('', '  • 直接输入完整的预设描述');
+                addOutput('', '  • 输入 /cancel 取消创建');
+                addOutput('', '  • 例如: "你是一个可爱的猫娘，说话时会在句尾加上喵~"');
+                
+                isWaitingForPresetContent = true;
+                pendingPresetName = newPresetName;
+                return;
+            }
+
+            if (cmd.startsWith('chatluna.preset.set')) {
+                const presetName = args[1];
+                if (!presetName) {
+                    addOutput('error-msg', '错误: 请指定预设名称');
+                    addOutput('info-msg', '用法: chatluna.preset.set <预设名>');
+                    addOutput('info-msg', '可用预设: ' + Object.keys(presets).join(', '));
+                    return;
+                }
+
+                if (presets[presetName]) {
+                    currentRoom.preset = presetName;
+                    currentRoom.history = [];
+                    updateStatus();
+                    addOutput('success-msg', `已切换到预设: ${presetName}`);
+                    addOutput('info-msg', '预设描述: ' + presets[presetName].substring(0, 50) + '...');
+                    addOutput('info-msg', '聊天历史已重置');
+                } else {
+                    addOutput('error-msg', `预设 "${presetName}" 不存在`);
+                    addOutput('info-msg', '可用预设: ' + Object.keys(presets).join(', '));
+                }
+                return;
+            }
+
+            if (cmd.startsWith('chatluna.preset.delete')) {
+                const deletePresetName = args[1];
+                if (!deletePresetName) {
+                    addOutput('error-msg', '错误: 请指定要删除的预设名称');
+                    addOutput('info-msg', '用法: chatluna.preset.delete <预设名>');
+                    return;
+                }
+
+                if (!presets[deletePresetName]) {
+                    addOutput('error-msg', `找不到预设 "${deletePresetName}"！请检查你是否输入了正确的预设名称`);
+                    addOutput('info-msg', '可用预设: ' + Object.keys(presets).join(', '));
+                    return;
+                }
+
+                if (deletePresetName === 'chatgpt') {
+                    addOutput('error-msg', '无法删除默认预设 "chatgpt"');
+                    return;
+                }
+
+                addOutput('error-msg', `确认删除预设 "${deletePresetName}" 吗？`);
+                addOutput('info-msg', '此操作无法撤销 (Y/N):');
+
+                confirmationAction = 'delete_preset';
+                confirmationData = { presetName: deletePresetName };
+                isWaitingForConfirmation = true;
+                return;
+            }
+
+            if (cmd === 'chatluna.restart') {
+                addOutput('system-msg', '正在重启ChatLuna核心服务...');
+                addOutput('info-msg', '步骤 1/4: 保存用户会话数据');
+                setTimeout(() => {
+                    addOutput('info-msg', '步骤 2/4: 重新加载配置文件');
+                }, 500);
+                setTimeout(() => {
+                    addOutput('info-msg', '步骤 3/4: 重新连接AI服务');
+                }, 1000);
+                setTimeout(() => {
+                    addOutput('info-msg', '步骤 4/4: 恢复用户会话');
+                    addOutput('success-msg', 'ChatLuna重启完成！');
+                    addOutput('info-msg', '所有服务已恢复正常运行');
+                    updateStatus();
+                }, 1500);
+                return;
+            }
+
+            if (cmd === 'chatluna.wipe') {
+                const num1 = Math.floor(Math.random() * 50) + 10;
+                const num2 = Math.floor(Math.random() * 50) + 10;
+                const num3 = Math.floor(Math.random() * 20) + 1;
+                verificationAnswer = num1 * num2 - num3;
+
+                addOutput('error-msg', '危险操作警告');
+                addOutput('system-msg', '此操作将删除以下数据:');
+                addOutput('', '  • 所有房间的对话历史记录');
+                addOutput('', '  • 用户自定义房间配置');
+                addOutput('', '  • 缓存和临时文件');
+                addOutput('error-msg', `请输入数学验证: ${num1} × ${num2} - ${num3} = ?`);
+                addOutput('info-msg', '请直接输入答案数字来确认删除操作');
+
+                isWaitingForVerification = true;
+                return;
+            }
+
+            // 默认响应
+            addOutput('success-msg', `执行命令: ${cmd}`);
+            addOutput('info-msg', '命令已发送到ChatLuna后端处理');
+            setTimeout(() => {
+                const responses = [
+                    '命令执行成功',
+                    '操作已完成',
+                    '配置已更新',
+                    '处理完成'
+                ];
+                const randomResponse = responses[Math.floor(Math.random() * responses.length)];
+                addOutput('system-msg', randomResponse);
+            }, Math.random() * 1000 + 500);
+        }
+
+        function updateAutocomplete(value) {
+            const matches = commands.filter(cmd =>
+                cmd.toLowerCase().includes(value.toLowerCase()) && cmd !== value
+            ).slice(0, 8);
+
+            if (matches.length === 0 || !value) {
+                autocomplete.style.display = 'none';
+                selectedAutocomplete = -1;
+                return;
+            }
+
+            autocomplete.innerHTML = matches.map((cmd, index) =>
+                `<div class="autocomplete-item ${index === selectedAutocomplete ? 'selected' : ''}">${cmd}</div>`
+            ).join('');
+
+            autocomplete.style.display = 'block';
+
+            autocomplete.querySelectorAll('.autocomplete-item').forEach((item, index) => {
+                item.onclick = () => {
+                    input.value = matches[index];
+                    autocomplete.style.display = 'none';
+                    input.focus();
+                };
+            });
+        }
+
+        function insertCommand(cmd) {
+            input.value = cmd;
+            input.focus();
+            autocomplete.style.display = 'none';
+        }
+
+        // 事件监听
+        input.addEventListener('keydown', (e) => {
+            switch (e.key) {
+                case 'Enter':
+                    if (autocomplete.style.display === 'block' && selectedAutocomplete >= 0) {
+                        const items = autocomplete.querySelectorAll('.autocomplete-item');
+                        input.value = items[selectedAutocomplete].textContent;
+                        autocomplete.style.display = 'none';
+                        selectedAutocomplete = -1;
+                    } else {
+                        processCommand(input.value);
+                        input.value = '';
+                        autocomplete.style.display = 'none';
+                        selectedAutocomplete = -1;
+                    }
+                    e.preventDefault();
+                    break;
+
+                case 'Tab':
+                    if (autocomplete.style.display === 'block') {
+                        const items = autocomplete.querySelectorAll('.autocomplete-item');
+                        if (items.length > 0) {
+                            input.value = items[0].textContent;
+                            autocomplete.style.display = 'none';
+                        }
+                    }
+                    e.preventDefault();
+                    break;
+
+                case 'ArrowUp':
+                    if (autocomplete.style.display === 'block') {
+                        selectedAutocomplete = Math.max(-1, selectedAutocomplete - 1);
+                        updateAutocomplete(input.value);
+                    } else if (commandHistory.length > 0) {
+                        historyIndex = Math.min(commandHistory.length - 1, historyIndex + 1);
+                        input.value = commandHistory[historyIndex];
+                    }
+                    e.preventDefault();
+                    break;
+
+                case 'ArrowDown':
+                    if (autocomplete.style.display === 'block') {
+                        const items = autocomplete.querySelectorAll('.autocomplete-item');
+                        selectedAutocomplete = Math.min(items.length - 1, selectedAutocomplete + 1);
+                        updateAutocomplete(input.value);
+                    } else {
+                        historyIndex = Math.max(-1, historyIndex - 1);
+                        input.value = historyIndex >= 0 ? commandHistory[historyIndex] : '';
+                    }
+                    e.preventDefault();
+                    break;
+
+                case 'Escape':
+                    autocomplete.style.display = 'none';
+                    selectedAutocomplete = -1;
+                    break;
+            }
+        });
+
+        input.addEventListener('input', (e) => {
+            updateAutocomplete(e.target.value);
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'F1') {
+                helpPanel.style.display = helpPanel.style.display === 'none' ? 'block' : 'none';
+                e.preventDefault();
+            }
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!helpPanel.contains(e.target)) {
+                helpPanel.style.display = 'none';
+            }
+            if (!autocomplete.contains(e.target) && e.target !== input) {
+                autocomplete.style.display = 'none';
+                selectedAutocomplete = -1;
+            }
+        });
+
+        setInterval(() => {
+            const cursor = document.getElementById('cursor');
+            if (document.activeElement === input) {
+                cursor.style.display = 'none';
+            } else {
+                cursor.style.display = 'inline';
+            }
+        }, 100);
+
+        init();
+        input.focus();
+    </script>
+</body>
+
+</html>
