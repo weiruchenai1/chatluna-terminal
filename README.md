@@ -10,7 +10,7 @@
 - 命令自动补全
 
 ## 在线体验
-访问：https://your-username.github.io/chatluna-terminal
+访问：https://weiruchenai1.github.io/chatluna-terminal
 
 ## 使用方法
 - 输入 `help` 查看所有命令
